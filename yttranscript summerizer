@@ -1,0 +1,99 @@
+import streamlit as st
+from dotenv import load_dotenv
+import os
+from youtube_transcript_api import YouTubeTranscriptApi
+from fpdf import FPDF
+from io import BytesIO
+
+load_dotenv()  # Load all environment variables
+import google.generativeai as genai
+
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+# Define the prompt for summarization
+prompt = """
+You are a YouTube video summarizer. You will take the transcript text and summarize
+the entire video, providing the important summary in bullet points within 250 words.
+Please provide the summary of the text given here:
+"""
+
+# Function to extract transcript details from a YouTube video
+def extract_transcript_details(youtube_video_url):
+    try:
+        video_id = youtube_video_url.split("=")[1]
+        transcript_text = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript = " ".join([i["text"] for i in transcript_text])
+        return transcript
+    except Exception as e:
+        raise e
+
+# Function to generate a summary using Google's Gemini Pro
+def generate_gemini_content(transcript_text, prompt):
+    model = genai.GenerativeModel("gemini-pro")
+    response = model.generate_content(prompt + transcript_text)
+    return response.text
+
+# Function to generate a PDF from transcript and summary
+from io import BytesIO
+
+# Function to generate a PDF from transcript and summary
+def generate_pdf(transcript, summary):
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(200, 10, "YouTube Transcript and Summary", ln=True, align="C")
+
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(200, 10, "Transcript:", ln=True)
+
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 10, transcript)
+
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(200, 10, "Summary:", ln=True)
+
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 10, summary)
+
+    # Save the PDF to a BytesIO object
+    pdf_output = BytesIO()
+    pdf.output(pdf_output, 'S')  # 'S' means output to string (BytesIO in this case)
+    pdf_output.seek(0)  # Move cursor to the beginning of the BytesIO object
+    
+    return pdf_output
+
+
+# Streamlit app
+st.title("YouTube Transcript to Detailed Notes Converter")
+youtube_link = st.text_input("Enter YouTube Video Link:")
+
+if youtube_link:
+    video_id = youtube_link.split("=")[1]
+    st.image(f"http://img.youtube.com/vi/{video_id}/0.jpg", use_column_width=True)
+
+if st.button("Get Detailed Notes"):
+    # Extract transcript
+    transcript_text = extract_transcript_details(youtube_link)
+
+    if transcript_text:
+        # Generate summary
+        summary = generate_gemini_content(transcript_text, prompt)
+
+        # Display summary
+        st.markdown("## Detailed Notes:")
+        st.write(summary)
+
+        # Generate PDF
+        pdf_file = generate_pdf(transcript_text, summary)
+        
+        # Download PDF
+        # Streamlit app code for download button
+        st.download_button(
+        label="Download as PDF",
+        data=pdf_file,
+        file_name="transcript_summary.pdf",
+        mime="application/pdf"
+)
+
